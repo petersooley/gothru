@@ -9,13 +9,43 @@ var r = rand.New(rand.NewSource(11111))
 
 type Path map[Cell]map[Cell]bool
 
+type Surrounding[T interface{}] struct {
+	North *T
+	South *T
+	East  *T
+	West  *T
+}
+
+func NewSurrounding[T interface{}](North *T, South *T, East *T, West *T) Surrounding[T] {
+	return Surrounding[T]{North, South, East, West}
+}
+
+func (s Surrounding[T]) Shuffled(r *rand.Rand) []*T {
+	arr := []*T{s.North, s.South, s.East, s.West}
+	r.Shuffle(4, func(i, j int) { arr[i], arr[j] = arr[j], arr[i] })
+	return arr
+}
+
+func (s Surrounding[T]) String() string {
+	safePrint := func(i *T) string {
+		if i == nil {
+			return "∅"
+		}
+		return fmt.Sprintf("%v", *i)
+	}
+	return fmt.Sprintf(
+		"[n: %v, s: %v, e: %v, w: %v]",
+		safePrint(s.North),
+		safePrint(s.South),
+		safePrint(s.East),
+		safePrint(s.West),
+	)
+}
+
 type Cell struct {
-	I     int
-	X, Y  int
-	North *int
-	South *int
-	East  *int
-	West  *int
+	I         int
+	X, Y      int
+	Neighbors Surrounding[int]
 }
 
 func rowMajor(mazeSize, x, y int) *int {
@@ -34,27 +64,19 @@ func NewCell(mazeSize, x, y int) Cell {
 	}
 
 	return Cell{
-		I:     *I,
-		X:     x,
-		Y:     y,
-		North: rowMajor(mazeSize, x, y-1),
-		South: rowMajor(mazeSize, x, y+1),
-		East:  rowMajor(mazeSize, x-1, y),
-		West:  rowMajor(mazeSize, x+1, y),
+		I: *I,
+		X: x,
+		Y: y,
+		Neighbors: NewSurrounding[int](
+			rowMajor(mazeSize, x, y-1),
+			rowMajor(mazeSize, x, y+1),
+			rowMajor(mazeSize, x-1, y),
+			rowMajor(mazeSize, x+1, y),
+		),
 	}
 }
 func (c *Cell) String() string {
-	safeIntPrint := func(i *int) string {
-		if i == nil {
-			return "∅"
-		}
-		return fmt.Sprintf("%d", *i)
-	}
-	return fmt.Sprintf(
-		"{i: %v, x: %v, y: %v, nbrs: [%v, %v, %v, %v]}\n",
-		c.I, c.X, c.Y,
-		safeIntPrint(c.North), safeIntPrint(c.South), safeIntPrint(c.East), safeIntPrint(c.West),
-	)
+	return fmt.Sprintf("{i: %v, x: %v, y: %v, nbrs: %v}\n", c.I, c.X, c.Y, c.Neighbors)
 }
 
 type Maze struct {
@@ -140,9 +162,7 @@ func (m *Maze) popCurrent() (c Cell) {
 
 func (m *Maze) nextUnvisitedNeighbor() *Cell {
 	c := m.currentCell()
-	neighbors := []*int{c.North, c.South, c.East, c.West}
-	m.r.Shuffle(4, func(i, j int) { neighbors[i], neighbors[j] = neighbors[j], neighbors[i] })
-	for _, n := range neighbors {
+	for _, n := range c.Neighbors.Shuffled(m.r) {
 		if n == nil {
 			continue
 		}
