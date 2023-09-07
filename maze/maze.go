@@ -9,62 +9,48 @@ var r = rand.New(rand.NewSource(11111))
 
 type Path map[Cell]map[Cell]bool
 
+const OUT_OF_MAZE int = -1
+
 type Surrounding[T interface{}] struct {
-	North *T
-	South *T
-	East  *T
-	West  *T
+	North T
+	South T
+	East  T
+	West  T
 }
 
-func NewSurrounding[T interface{}](North *T, South *T, East *T, West *T) Surrounding[T] {
+func NewSurrounding[T interface{}](North T, South T, East T, West T) Surrounding[T] {
 	return Surrounding[T]{North, South, East, West}
 }
 
-func (s Surrounding[T]) Shuffled(r *rand.Rand) []*T {
-	arr := []*T{s.North, s.South, s.East, s.West}
+func (s Surrounding[T]) Shuffled(r *rand.Rand) []T {
+	arr := []T{s.North, s.South, s.East, s.West}
 	r.Shuffle(4, func(i, j int) { arr[i], arr[j] = arr[j], arr[i] })
 	return arr
-}
-
-func (s Surrounding[T]) String() string {
-	safePrint := func(i *T) string {
-		if i == nil {
-			return "∅"
-		}
-		return fmt.Sprintf("%v", *i)
-	}
-	return fmt.Sprintf(
-		"[n: %v, s: %v, e: %v, w: %v]",
-		safePrint(s.North),
-		safePrint(s.South),
-		safePrint(s.East),
-		safePrint(s.West),
-	)
 }
 
 type Cell struct {
 	I         int
 	X, Y      int
 	Neighbors Surrounding[int]
+	Paths     Surrounding[bool]
 }
 
-func rowMajor(mazeSize, x, y int) *int {
+func rowMajor(mazeSize, x, y int) int {
 	if x < 0 || y < 0 || x >= mazeSize || y >= mazeSize {
-		return nil
+		return OUT_OF_MAZE
 	}
 
-	i := (y * mazeSize) + x
-	return &i
+	return (y * mazeSize) + x
 }
 
 func NewCell(mazeSize, x, y int) Cell {
 	I := rowMajor(mazeSize, x, y)
-	if I == nil {
+	if I == OUT_OF_MAZE {
 		panic(fmt.Sprintf("invalid cell coords %v,%v", x, y))
 	}
 
 	return Cell{
-		I: *I,
+		I: I,
 		X: x,
 		Y: y,
 		Neighbors: NewSurrounding[int](
@@ -73,10 +59,26 @@ func NewCell(mazeSize, x, y int) Cell {
 			rowMajor(mazeSize, x-1, y),
 			rowMajor(mazeSize, x+1, y),
 		),
+		Paths: NewSurrounding[bool](false, false, false, false),
 	}
 }
 func (c *Cell) String() string {
-	return fmt.Sprintf("{i: %v, x: %v, y: %v, nbrs: %v}\n", c.I, c.X, c.Y, c.Neighbors)
+	return fmt.Sprintf("[%v] %v,%v, nbrs: %v}\n", c.I, c.X, c.Y, c.Neighbors)
+}
+
+func (c *Cell) Connect(to *Cell) {
+	switch to.I {
+	case c.Neighbors.North:
+		c.Paths.North = true
+	case c.Neighbors.South:
+		c.Paths.South = true
+	case c.Neighbors.East:
+		c.Paths.East = true
+	case c.Neighbors.West:
+		c.Paths.West = true
+	default:
+		panic(fmt.Sprintf("%v,%v is not a neighbor of %v,%v", c.X, c.Y, to.X, to.Y))
+	}
 }
 
 type Maze struct {
@@ -84,7 +86,7 @@ type Maze struct {
 	size    int
 	visited map[int]bool
 	path    Path
-	current []Cell
+	stack   []int
 	r       *rand.Rand
 }
 
@@ -99,12 +101,13 @@ func Generate(size int, seed int64) Maze {
 
 	fmt.Println(cells)
 
+	// todo maybe we start in the middle of the maze instead?
+
 	maze := Maze{
 		cells:   cells,
 		size:    size,
 		visited: make(map[int]bool),
-		path:    make(Path),
-		current: make([]Cell, 0),
+		stack:   make([]int, 1),
 	}
 
 	if seed > 0 {
@@ -113,7 +116,7 @@ func Generate(size int, seed int64) Maze {
 		maze.r = rand.New(rand.NewSource(rand.Int63()))
 	}
 
-	// maze.push(Cell{})
+	maze.visit()
 
 	return maze
 }
@@ -122,54 +125,38 @@ func (m *Maze) Path() Path {
 	return m.path
 }
 
-func (m *Maze) push(c Cell) {
-	prev := m.currentCell()
-	if prev != nil {
-		if m.path[*prev] == nil {
-			m.path[*prev] = make(map[Cell]bool)
-		}
-		m.path[*prev][c] = true
-	}
-
+func (m *Maze) visit() {
+	c := m.currentCell()
 	m.visited[c.I] = true
-	m.current = append(m.current, c)
 
-	next := m.nextUnvisitedNeighbor()
+	next := m.nextUnvisitedNeighbor(c)
+
 	if next == nil {
-		n := m.popCurrent()
-		if len(m.current) == 0 {
+		m.stack = m.stack[:len(m.stack)-1]
+		if len(m.stack) == 0 {
 			return
 		}
-		m.push(n)
 	} else {
-		m.push(*next)
+		c.Connect(next)
+		m.stack = append(m.stack, c.I)
 	}
+	m.visit()
 	return
 }
 
 func (m *Maze) currentCell() *Cell {
-	if len(m.current) > 0 {
-		return &m.current[len(m.current)-1]
-	}
-	return nil
+	return m.cells[m.stack[len(m.stack)-1]]
 }
 
-func (m *Maze) popCurrent() (c Cell) {
-	// pops two elements, this works because we prematurely add to current for each visit
-	c, m.current = m.current[len(m.current)-2], m.current[:len(m.current)-2]
-	return
-}
-
-func (m *Maze) nextUnvisitedNeighbor() *Cell {
-	c := m.currentCell()
+func (m *Maze) nextUnvisitedNeighbor(c *Cell) *Cell {
 	for _, n := range c.Neighbors.Shuffled(m.r) {
-		if n == nil {
+		if n == OUT_OF_MAZE {
 			continue
 		}
-		if _, ok := m.visited[*n]; ok {
+		if _, ok := m.visited[n]; ok {
 			continue
 		}
-		return m.cells[*n]
+		return m.cells[n]
 	}
 	return nil
 }
