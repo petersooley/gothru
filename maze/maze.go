@@ -5,10 +5,6 @@ import (
 	"math/rand"
 )
 
-var r = rand.New(rand.NewSource(11111))
-
-type Path map[Cell]map[Cell]bool
-
 const OUT_OF_MAZE int = -1
 
 type Surrounding[T interface{}] struct {
@@ -56,28 +52,34 @@ func NewCell(mazeSize, x, y int) Cell {
 		Neighbors: NewSurrounding[int](
 			rowMajor(mazeSize, x, y-1),
 			rowMajor(mazeSize, x, y+1),
-			rowMajor(mazeSize, x-1, y),
 			rowMajor(mazeSize, x+1, y),
+			rowMajor(mazeSize, x-1, y),
 		),
 		Paths: NewSurrounding[bool](false, false, false, false),
 	}
 }
 func (c *Cell) String() string {
-	return fmt.Sprintf("[Cell #%02v] %v,%v, nbrs: %v, pth: %v}\n", c.I, c.X, c.Y, c.Neighbors, c.Paths)
+	return fmt.Sprintf("[Cell #%02v] %v,%v, nbrs: %v, pth: %v}\n", c.I, c.X, c.Y, &c.Neighbors, &c.Paths)
 }
-func (s Surrounding[T]) String() string {
+func (s *Surrounding[T]) String() string {
 	return fmt.Sprintf("{n:%v, s:%v, e:%v, w:%v}", s.North, s.South, s.East, s.West)
 }
 
 func (c *Cell) Connect(to *Cell) {
+	// fmt.Printf("connect %v (%v, %v) to %v (%v, %v)\n", c.I, c.X, c.Y, to.I, to.X, to.Y)
+
 	switch to.I {
 	case c.Neighbors.North:
+		to.Paths.South = true
 		c.Paths.North = true
 	case c.Neighbors.South:
+		to.Paths.North = true
 		c.Paths.South = true
 	case c.Neighbors.East:
+		to.Paths.West = true
 		c.Paths.East = true
 	case c.Neighbors.West:
+		to.Paths.East = true
 		c.Paths.West = true
 	default:
 		panic(fmt.Sprintf("%v,%v is not a neighbor of %v,%v", c.X, c.Y, to.X, to.Y))
@@ -88,7 +90,6 @@ type Maze struct {
 	cells   map[int]*Cell
 	size    int
 	visited map[int]bool
-	path    Path
 	stack   []int
 	r       *rand.Rand
 }
@@ -102,14 +103,11 @@ func Generate(size int, seed int64) Maze {
 		}
 	}
 
-	fmt.Println(cells)
-
 	// todo maybe we start in the middle of the maze instead?
 
 	maze := Maze{
 		cells:   cells,
 		size:    size,
-		path:    make(Path),
 		visited: make(map[int]bool),
 		stack:   make([]int, 1),
 	}
@@ -122,9 +120,9 @@ func Generate(size int, seed int64) Maze {
 
 	maze.visit()
 
-	for _, cell := range maze.cells {
-		fmt.Printf("%v\n", cell)
-	}
+	// for _, cell := range maze.cells {
+	// 	fmt.Printf("%v\n", cell)
+	// }
 
 	return maze
 }
@@ -152,8 +150,20 @@ func (m *Maze) currentCell() *Cell {
 	return m.cells[m.stack[len(m.stack)-1]]
 }
 
-func (m *Maze) Path() Path {
-	return m.path
+func (m *Maze) IsPath(a, b int) bool {
+	aCell := m.cells[a]
+	switch b {
+	case aCell.Neighbors.North:
+		return aCell.Paths.North
+	case aCell.Neighbors.South:
+		return aCell.Paths.South
+	case aCell.Neighbors.East:
+		return aCell.Paths.East
+	case aCell.Neighbors.West:
+		return aCell.Paths.West
+	default:
+		panic(fmt.Sprintf("%v is not a neighbor of %v", a, b))
+	}
 }
 
 func (m *Maze) nextUnvisitedNeighbor(c *Cell) *Cell {
