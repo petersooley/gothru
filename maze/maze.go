@@ -63,7 +63,10 @@ func NewCell(mazeSize, x, y int) Cell {
 	}
 }
 func (c *Cell) String() string {
-	return fmt.Sprintf("[%v] %v,%v, nbrs: %v}\n", c.I, c.X, c.Y, c.Neighbors)
+	return fmt.Sprintf("[Cell #%02v] %v,%v, nbrs: %v, pth: %v}\n", c.I, c.X, c.Y, c.Neighbors, c.Paths)
+}
+func (s Surrounding[T]) String() string {
+	return fmt.Sprintf("{n:%v, s:%v, e:%v, w:%v}", s.North, s.South, s.East, s.West)
 }
 
 func (c *Cell) Connect(to *Cell) {
@@ -106,6 +109,7 @@ func Generate(size int, seed int64) Maze {
 	maze := Maze{
 		cells:   cells,
 		size:    size,
+		path:    make(Path),
 		visited: make(map[int]bool),
 		stack:   make([]int, 1),
 	}
@@ -118,15 +122,16 @@ func Generate(size int, seed int64) Maze {
 
 	maze.visit()
 
-	return maze
-}
+	for _, cell := range maze.cells {
+		fmt.Printf("%v\n", cell)
+	}
 
-func (m *Maze) Path() Path {
-	return m.path
+	return maze
 }
 
 func (m *Maze) visit() {
 	c := m.currentCell()
+
 	m.visited[c.I] = true
 
 	next := m.nextUnvisitedNeighbor(c)
@@ -138,14 +143,17 @@ func (m *Maze) visit() {
 		}
 	} else {
 		c.Connect(next)
-		m.stack = append(m.stack, c.I)
+		m.stack = append(m.stack, next.I)
 	}
 	m.visit()
-	return
 }
 
 func (m *Maze) currentCell() *Cell {
 	return m.cells[m.stack[len(m.stack)-1]]
+}
+
+func (m *Maze) Path() Path {
+	return m.path
 }
 
 func (m *Maze) nextUnvisitedNeighbor(c *Cell) *Cell {

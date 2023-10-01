@@ -6,12 +6,12 @@ import (
 )
 
 func TestMaze(t *testing.T) {
-	_ = maze.Generate(5, 11111)
+	m := maze.Generate(5, 11111)
 
-	// path := m.Path()
-	// if len(path) == 0 {
-	// 	t.Fatal("no path generated")
-	// }
+	path := m.Path()
+	if len(path) == 0 {
+		t.Fatal("no path generated")
+	}
 	// // given the size and seed, we know these should be the right connections
 	// // from drawing the maze on paper
 	// expectConnection(t, path, maze.Cell{0, 3}, maze.Cell{0, 4})
